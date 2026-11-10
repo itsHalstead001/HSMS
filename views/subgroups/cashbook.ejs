@@ -1,0 +1,33 @@
+<%- include('../partials/header') %>
+<section class="page-heading">
+  <div><span class="eyebrow">Subgroup <%= subgroupCode %> collection</span><h1><%= meeting.title %></h1><p><%= new Date(meeting.meeting_date).toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) %>. Update each member’s meeting record; subgroup totals are calculated automatically.</p></div>
+  <div class="heading-actions"><form class="report-period-form compact-report-form" action="/subgroup/cashbook/report.pdf" method="get"><div class="report-period-field"><label class="sr-only" for="meeting-report-period">Report period</label><select id="meeting-report-period" name="period"><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option></select></div><div class="report-period-field"><label class="sr-only" for="meeting-report-date">Period containing</label><input id="meeting-report-date" name="date" type="date" value="<%= meeting.meeting_day %>" required></div><button class="button button-secondary" type="submit">Download PDF</button></form><a class="button button-secondary" href="/subgroup/loans">Process subgroup loans</a><a class="button button-secondary" href="/subgroup/cashbook">← Meetings</a></div>
+</section>
+
+<section class="metric-grid cashbook-summary" aria-label="Subgroup totals">
+  <% [['Fines', totals.fine], ['Socials', totals.social], ['Savings', totals.savings], ['Loan returns', totals.loan_return], ['Loans taken', totals.loan_taken]].forEach(([label, amount]) => { %>
+    <article class="metric-card"><div class="metric-label"><%= label %></div><strong class="metric-value"><span class="currency"><%= currency %></span> <%= Number(amount).toLocaleString('en', { minimumFractionDigits: 2 }) %></strong><span class="metric-caption">Calculated from member records</span></article>
+  <% }) %>
+</section>
+
+<section class="panel">
+  <div class="panel-heading"><div><span class="eyebrow">Subgroup member records</span><h2>Meeting payments</h2></div><span class="muted"><%= members.length %> active members</span></div>
+  <% if (members.length) { %>
+    <div class="table-wrap"><table class="cashbook-table subgroup-member-table">
+      <thead><tr><th>Member</th><th>Fine</th><th>Social</th><th>Savings</th><th>Loan return</th><th>Loan taken</th><th>Actions</th></tr></thead>
+      <tbody><% members.forEach((member) => { %><tr>
+        <td><strong><a class="member-name" href="/members/<%= member.id %>"><%= member.full_name %></a></strong><form id="member-record-<%= member.id %>" action="/subgroup/cashbook/<%= meeting.id %>/member/<%= member.id %>" method="post" class="hidden-form"><input type="hidden" name="_csrf" value="<%= csrfToken %>"></form></td>
+          <% ['fine', 'social', 'savings', 'loan_return'].forEach((field) => { %>
+            <td><label class="sr-only" for="<%= field %>-<%= member.id %>"><%= field.replace('_', ' ') %> for <%= member.full_name %></label><input id="<%= field %>-<%= member.id %>" form="member-record-<%= member.id %>" name="<%= field %>" type="number" min="0" max="9999999999" step="0.01" value="<%= Number(member[field]).toFixed(2) %>"></td>
+          <% }) %>
+          <td class="money"><%= currency %> <%= Number(member.loan_taken).toLocaleString('en', { minimumFractionDigits: 2 }) %></td>
+          <td class="record-actions"><button class="button button-primary button-small" type="submit" form="member-record-<%= member.id %>">Save</button><form action="/subgroup/cashbook/<%= meeting.id %>/member/<%= member.id %>/delete" method="post" data-confirm="Delete this member’s financial entries for this meeting? The ledger correction will be retained in the audit history."><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button button-danger button-small" type="submit">Delete</button></form></td>
+      </tr><% }) %></tbody>
+    </table></div>
+  <% } else { %><p class="quiet-empty">No active members are assigned to subgroup <%= subgroupCode %>.</p><% } %>
+  <div class="subgroup-submit-row">
+    <span><strong>Financial Secretary report</strong><small><%= submission && submission.submitted_at ? `${submission.pending_changes ? 'Member records have changed since' : 'Last submitted'} ${new Date(submission.submitted_at).toLocaleString()}. ${submission.pending_changes ? 'Submit the updated totals.' : ''}` : 'Current totals have not been submitted.' %></small></span>
+    <form action="/subgroup/cashbook/<%= meeting.id %>/submit" method="post"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button button-primary" type="submit">Submit totals to Financial Secretary</button></form>
+  </div>
+</section>
+<%- include('../partials/footer') %>

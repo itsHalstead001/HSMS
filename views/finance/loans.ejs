@@ -1,0 +1,42 @@
+<%- include('../partials/header') %>
+<section class="page-heading"><div><span class="eyebrow">Fair, transparent lending</span><h1>Loans</h1><p>Review applications, disburse approved loans from meeting cash and track repayments.</p></div><a class="button button-secondary" href="/finance/contributions">Open meeting cashbooks</a></section>
+<div class="finance-grid loan-page-grid">
+  <section class="panel">
+    <div class="panel-heading"><div><span class="eyebrow">Loan register</span><h2>Applications & balances</h2></div></div>
+    <% if (loans.length) { %><div class="loan-list"><% loans.forEach((loan) => { %><article class="loan-card">
+      <div class="loan-card-head"><div><strong><%= loan.full_name %></strong><small>Applied <%= new Date(loan.application_date).toLocaleDateString() %> · <%= loan.term_months %> months</small></div><span class="status-badge status-<%= loan.status %>"><%= loan.status %></span></div>
+      <p class="loan-purpose"><%= loan.purpose %></p>
+      <div class="loan-numbers"><span><small>Principal</small><strong><%= currency %> <%= Number(loan.amount).toLocaleString('en', { minimumFractionDigits: 2 }) %></strong></span><span><small>Outstanding</small><strong><%= currency %> <%= Number(loan.balance).toLocaleString('en', { minimumFractionDigits: 2 }) %></strong></span><span><small>Interest</small><strong><%= Number(loan.interest_rate).toFixed(2) %>% p.a.</strong></span></div>
+      <div class="loan-actions">
+        <% if (['pending', 'approved'].includes(loan.status) && ['chairperson', 'treasurer'].includes(user.role) && !loan.disbursed_at) { %>
+          <a class="button button-secondary button-small" href="/finance/loans/<%= loan.id %>/edit">Edit loan</a>
+        <% } %>
+        <% if (loan.status === 'pending' && ['chairperson', 'treasurer'].includes(user.role)) { %>
+          <% ['approved', 'rejected'].forEach((decision) => { %><form action="/finance/loans/<%= loan.id %>/review" method="post"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="decision" value="<%= decision %>"><button class="button <%= decision === 'approved' ? 'button-primary' : 'button-secondary' %> button-small" type="submit"><%= decision === 'approved' ? 'Approve' : 'Decline' %></button></form><% }) %>
+        <% } else if (loan.status === 'approved' && ['chairperson', 'treasurer'].includes(user.role)) { %>
+          <form action="/finance/loans/<%= loan.id %>/disburse" method="post" class="loan-disburse-form" data-confirm="Disburse this approved loan from the selected meeting cashbook?">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <label class="sr-only" for="meeting-<%= loan.id %>">Meeting to disburse from</label>
+            <select id="meeting-<%= loan.id %>" name="meeting_id" required><option value="">Select cashbook</option><% meetings.forEach((meeting) => { %><option value="<%= meeting.id %>"><%= new Date(meeting.meeting_date).toLocaleDateString('en', { weekday: 'short', day: 'numeric', month: 'short' }) %> · <%= meeting.title %></option><% }) %></select>
+            <button class="button button-primary button-small" type="submit">Disburse loan</button>
+          </form>
+        <% } else if (loan.status === 'active' && ['chairperson', 'treasurer'].includes(user.role)) { %>
+          <form action="/finance/loans/<%= loan.id %>/repayments" method="post" class="inline-repayment"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><label class="sr-only" for="repay-<%= loan.id %>">Repayment amount</label><input id="repay-<%= loan.id %>" name="amount" type="number" min="0.01" max="<%= Number(loan.balance).toFixed(2) %>" step="0.01" placeholder="Amount" required><button class="button button-primary button-small" type="submit">Record payment</button></form>
+        <% } %>
+        <% if (['active', 'repaid'].includes(loan.status)) { %><a class="text-link" href="/finance/loans/<%= loan.id %>/schedule">Repayment schedule →</a><% } %>
+      </div>
+    </article><% }) %></div><% } else { %><p class="quiet-empty">Loan applications will appear here.</p><% } %>
+  </section>
+  <% if (['chairperson', 'treasurer'].includes(user.role)) { %>
+    <form class="panel form-panel" action="/finance/loans" method="post">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>"><span class="eyebrow">Start an application</span><h2>Record loan request</h2>
+      <p class="muted small-copy">The group rate is <strong><%= Number(defaultRate).toFixed(2) %>% per year</strong>. A schedule is created when the approved loan is disbursed.</p>
+      <div class="form-field"><label for="member_id">Member <span class="required">*</span></label><select id="member_id" name="member_id" required><option value="">Choose a member</option><% members.forEach((member) => { %><option value="<%= member.id %>"><%= member.full_name %></option><% }) %></select></div>
+      <div class="form-field"><label for="amount">Amount (<%= currency %>) <span class="required">*</span></label><input id="amount" name="amount" type="number" min="0.01" max="9999999999" step="0.01" required></div>
+      <div class="form-field"><label for="term_months">Repayment term</label><select id="term_months" name="term_months"><% [3, 6, 9, 12, 18, 24, 36].forEach((term) => { %><option value="<%= term %>" <%= Number(defaultTerm) === term ? 'selected' : '' %>><%= term %> months</option><% }) %></select></div>
+      <div class="form-field"><label for="purpose">Purpose <span class="required">*</span></label><textarea id="purpose" name="purpose" rows="3" maxlength="500" required></textarea></div>
+      <button class="button button-primary" type="submit">Record application</button>
+    </form>
+  <% } %>
+</div>
+<%- include('../partials/footer') %>

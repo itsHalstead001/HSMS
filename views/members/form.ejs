@@ -1,0 +1,17 @@
+<%- include('../partials/header') %>
+<section class="page-heading"><div><span class="eyebrow"><%= member ? 'Keep the record current' : 'Welcome someone new' %></span><h1><%= title %></h1><p><%= member ? 'Update contact and membership details. Financial entries stay in the ledger.' : 'Add their details and record the joining fee in the group ledger.' %></p></div><a class="button button-secondary" href="/members">← Back to members</a></section>
+<form class="panel form-panel" action="<%= member ? `/members/${member.id}` : '/members' %>" method="post">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <h2>Member details</h2>
+  <div class="form-grid">
+    <div class="form-field form-full"><label for="full_name">Full name <span class="required">*</span></label><input id="full_name" name="full_name" required maxlength="160" value="<%= member ? member.full_name : '' %>" autocomplete="name"></div>
+    <div class="form-field"><label for="phone">Phone number</label><input id="phone" name="phone" maxlength="40" value="<%= member ? (member.phone || '') : '' %>" autocomplete="tel"></div>
+    <div class="form-field"><label for="email">Email address</label><input id="email" name="email" type="email" maxlength="190" value="<%= member ? (member.email || '') : '' %>" autocomplete="email"></div>
+    <div class="form-field"><label for="subgroup_code">Subgroup <span class="required">*</span></label><select id="subgroup_code" name="subgroup_code" required><option value="">Choose subgroup A–D</option><% subgroups.forEach((subgroup) => { %><option value="<%= subgroup.code %>" <%= member && member.subgroup_code === subgroup.code ? 'selected' : '' %>><%= subgroup.name %></option><% }) %></select><small>Every member belongs to one of the four subgroups.</small></div>
+    <div class="form-field"><label for="join_date">Join date <span class="required">*</span></label><input id="join_date" name="join_date" type="date" required value="<%= member ? new Date(member.join_date).toISOString().slice(0,10) : new Date().toISOString().slice(0,10) %>"></div>
+    <% if (member) { %><div class="form-field"><label for="status">Membership status</label><select id="status" name="status"><option value="active" <%= member.status === 'active' ? 'selected' : '' %>>Active</option><option value="inactive" <%= member.status === 'inactive' ? 'selected' : '' %>>Inactive</option></select></div><% } else { %><div class="form-field"><label for="registration_fee">Registration fee (<%= currency || 'KES' %>)</label><input id="registration_fee" name="registration_fee" type="number" min="0" max="9999999999" step="0.01" value="<%= defaultFee %>"><small>Set to zero if no fee is collected today.</small></div><% } %>
+    <div class="form-field form-full"><label for="address">Postal or physical address</label><textarea id="address" name="address" rows="3" maxlength="500"><%= member ? (member.address || '') : '' %></textarea></div>
+  </div>
+  <div class="form-actions"><a class="button button-secondary" href="<%= member ? `/members/${member.id}` : '/members' %>">Cancel</a><button class="button button-primary" type="submit"><%= member ? 'Save changes' : 'Register member' %></button></div>
+</form>
+<%- include('../partials/footer') %>

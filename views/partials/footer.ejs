@@ -1,0 +1,12 @@
+<% if (user) { %>
+      </main>
+      <footer class="page-footer"><span>Halstead SHG · secure group records</span><span>Need help? Contact your chairperson.</span><a href="/terms">Terms &amp; conditions</a><span>© <%= new Date().getFullYear() %> <%= groupName %></span></footer>
+    </div>
+  </div>
+<% } else { %>
+    </main>
+    <footer class="auth-footnote"><span>Private group workspace · Authorized members only</span><a href="/terms">Terms &amp; conditions</a><span>© <%= new Date().getFullYear() %> <%= groupName %></span></footer>
+  </div>
+<% } %>
+</body>
+</html>

@@ -1,0 +1,84 @@
+<%- include('partials/header') %>
+<section class="dashboard-hero">
+  <div class="dashboard-hero-copy">
+    <span class="hero-kicker"><span class="hero-live-dot"></span> YOUR GROUP, IN GOOD ORDER</span>
+    <h1>Good day, <%= user.fullName.split(/\s+/)[0] %>.</h1>
+    <p><%= role === 'secretary' ? 'Keep your community connected and the details in order.' : role === 'subgroup_chairperson' ? `Update subgroup ${user.subgroupCode} member finances and submit weekly totals.` : role === 'subgroup_secretary' ? `Keep subgroup ${user.subgroupCode} attendance and meeting notes up to date.` : role === 'financial_secretary' ? 'Bring the four subgroup meeting totals together for the group.' : role === 'treasurer' ? 'A clear picture of the resources your members build together.' : 'A considered view of your members, shared funds and what comes next.' %></p>
+    <div class="hero-actions">
+      <% if (['chairperson', 'secretary'].includes(role)) { %><a class="button hero-button" href="/members/new"><span aria-hidden="true">＋</span> Register a member</a><% } %>
+      <% if (role === 'subgroup_chairperson') { %><a class="button hero-button" href="/subgroup/cashbook"><span aria-hidden="true">＋</span> Submit subgroup totals</a><% } %>
+      <% if (role === 'subgroup_secretary') { %><a class="button hero-button" href="/subgroup/meetings"><span aria-hidden="true">◷</span> Mark attendance</a><% } %>
+      <% if (['chairperson', 'treasurer', 'financial_secretary'].includes(role)) { %><a class="button hero-button" href="/finance/contributions"><span aria-hidden="true">＋</span> Open group cashbook summary</a><% } %>
+      <% if (['chairperson', 'secretary', 'treasurer', 'subgroup_chairperson', 'subgroup_secretary'].includes(role)) { %><a class="hero-secondary-link" href="/members">View member directory <span aria-hidden="true">→</span></a><% } %>
+    </div>
+  </div>
+  <div class="dashboard-hero-note" aria-label="Group workspace information">
+    <span class="hero-note-icon" aria-hidden="true">✳</span>
+    <span class="hero-note-label">A shared effort</span>
+    <strong>People first.<br>Records in good hands.</strong>
+    <span class="hero-note-date"><%= new Date().toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long' }) %></span>
+  </div>
+</section>
+
+<section class="metric-grid" aria-label="Group summary">
+  <article class="metric-card"><div class="metric-label">Active members <span class="metric-icon green">♙</span></div><strong class="metric-value"><%= memberCount %></strong><span class="metric-caption">People in your group today</span></article>
+  <% if (['chairperson', 'treasurer'].includes(role)) { %>
+    <article class="metric-card"><div class="metric-label">Group fund <span class="metric-icon blue">◈</span></div><strong class="metric-value"><span class="currency"><%= currency || 'KES' %></span> <%= Number(funds).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) %></strong><span class="metric-caption">Based on all recorded transactions</span></article>
+    <article class="metric-card"><div class="metric-label">Outstanding loans <span class="metric-icon amber">↗</span></div><strong class="metric-value"><span class="currency"><%= currency || 'KES' %></span> <%= Number(loanSummary.balance).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) %></strong><span class="metric-caption"><%= loanSummary.count %> active <%= Number(loanSummary.count) === 1 ? 'loan' : 'loans' %></span></article>
+  <% } else if (role === 'secretary') { %>
+    <article class="metric-card"><div class="metric-label">Coming up <span class="metric-icon blue">◷</span></div><strong class="metric-value"><%= upcomingMeetings.length %></strong><span class="metric-caption">Scheduled group meetings</span></article>
+    <article class="metric-card"><div class="metric-label">Recently joined <span class="metric-icon amber">✳</span></div><strong class="metric-value"><%= recentMembers.length %></strong><span class="metric-caption">Latest member registrations</span></article>
+  <% } %>
+  <% if (role === 'subgroup_secretary') { %>
+    <article class="metric-card"><div class="metric-label">Subgroup members <span class="metric-icon green">♙</span></div><strong class="metric-value"><%= memberCount %></strong><span class="metric-caption">Active members in subgroup <%= user.subgroupCode %></span></article>
+    <article class="metric-card"><div class="metric-label">Meetings to manage <span class="metric-icon blue">◷</span></div><strong class="metric-value"><%= upcomingMeetings.length %></strong><span class="metric-caption">Upcoming group meetings</span></article>
+  <% } %>
+  <% if (role === 'treasurer') { %>
+    <article class="metric-card"><div class="metric-label">Contributions this month <span class="metric-icon green">＋</span></div><strong class="metric-value"><span class="currency"><%= currency || 'KES' %></span> <%= Number(monthContributions).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) %></strong><span class="metric-caption">Recorded since the start of this month</span></article>
+  <% } %>
+</section>
+
+<div class="dashboard-grid">
+  <% if (['chairperson', 'treasurer'].includes(role)) { %>
+  <section class="panel">
+    <div class="panel-heading"><div><span class="eyebrow">The latest</span><h2>Recent activity</h2></div><a class="text-link" href="/finance/reports">View ledger <span aria-hidden="true">→</span></a></div>
+    <% if (recentTransactions.length) { %>
+      <div class="activity-list">
+        <% recentTransactions.forEach((item) => { %>
+          <div class="activity-row">
+            <span class="activity-icon <%= ['contribution', 'registration_fee', 'fine', 'social', 'savings', 'loan_return', 'loan_repayment'].includes(item.transaction_type) ? 'income' : 'outcome' %>"><%= ['contribution', 'registration_fee', 'fine', 'social', 'savings', 'loan_return', 'loan_repayment'].includes(item.transaction_type) ? '↙' : '↗' %></span>
+            <div class="activity-copy"><strong><%= item.description %></strong><small><%= item.transaction_type.replace(/_/g, ' ') %> · <%= new Date(item.transaction_date).toLocaleDateString() %></small></div>
+            <span class="activity-amount"><%= ['contribution', 'registration_fee', 'fine', 'social', 'savings', 'loan_return', 'loan_repayment'].includes(item.transaction_type) ? '+' : '−' %><%= currency || 'KES' %> <%= Number(item.amount).toLocaleString('en', { minimumFractionDigits: 2 }) %></span>
+          </div>
+        <% }) %>
+      </div>
+    <% } else { %><p class="quiet-empty">Your group’s recorded activity will appear here.</p><% } %>
+  </section>
+  <% } else if (role === 'secretary') { %>
+  <section class="panel">
+    <div class="panel-heading"><div><span class="eyebrow">Your community</span><h2>Recently registered</h2></div><a class="text-link" href="/members">All members <span aria-hidden="true">→</span></a></div>
+    <% if (recentMembers.length) { %>
+      <div class="activity-list">
+        <% recentMembers.forEach((member) => { %><a class="activity-row linked-row" href="/members/<%= member.id %>"><span class="avatar avatar-soft"><%= member.full_name.split(/\s+/).map(part => part[0]).slice(0,2).join('').toUpperCase() %></span><div class="activity-copy"><strong><%= member.full_name %></strong><small>Joined <%= new Date(member.join_date).toLocaleDateString() %></small></div><span class="row-arrow">→</span></a><% }) %>
+      </div>
+    <% } else { %><p class="quiet-empty">New members will appear here after registration.</p><% } %>
+  </section>
+  <% } %>
+  <section class="panel">
+    <div class="panel-heading"><div><span class="eyebrow">On the calendar</span><h2>Upcoming meetings</h2></div><% if (['chairperson','secretary'].includes(role)) { %><a class="text-link" href="/meetings">All meetings <span aria-hidden="true">→</span></a><% } else if (role === 'subgroup_secretary') { %><a class="text-link" href="/subgroup/meetings">Attendance register <span aria-hidden="true">→</span></a><% } %></div>
+    <% if (upcomingMeetings.length) { %>
+      <div class="meeting-list">
+        <% upcomingMeetings.forEach((meeting) => { %><a class="meeting-row" href="<%= ['chairperson','secretary'].includes(role) ? `/meetings/${meeting.id}` : role === 'subgroup_secretary' ? `/subgroup/meetings/${meeting.id}` : '/dashboard' %>"><span class="date-tile"><strong><%= new Date(meeting.meeting_date).toLocaleDateString('en', { day: '2-digit' }) %></strong><small><%= new Date(meeting.meeting_date).toLocaleDateString('en', { month: 'short' }) %></small></span><span><strong><%= meeting.title %></strong><small><%= new Date(meeting.meeting_date).toLocaleString('en', { weekday: 'short', hour: 'numeric', minute: '2-digit' }) %></small></span><span class="row-arrow">→</span></a><% }) %>
+      </div>
+    <% } else { %><p class="quiet-empty">No meetings scheduled. Put a date on the calendar when you’re ready.</p><% } %>
+  </section>
+  <% if (pendingLoans.length && ['chairperson', 'treasurer'].includes(role)) { %>
+    <section class="panel panel-span">
+      <div class="panel-heading"><div><span class="eyebrow">Needs a decision</span><h2>Loan applications</h2></div><a class="text-link" href="/finance/loans">Review all <span aria-hidden="true">→</span></a></div>
+      <div class="simple-table"><div class="table-head"><span>Member</span><span>Applied</span><span>Amount</span><span>Status</span></div>
+      <% pendingLoans.forEach((loan) => { %><div class="table-row"><span><strong><%= loan.full_name %></strong></span><span><%= new Date(loan.application_date).toLocaleDateString() %></span><span class="money"><%= currency || 'KES' %> <%= Number(loan.amount).toLocaleString('en', { minimumFractionDigits: 2 }) %></span><span><span class="status-badge status-pending">Awaiting review</span></span></div><% }) %>
+      </div>
+    </section>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

@@ -1,0 +1,23 @@
+<%- include('../partials/header') %>
+<section class="page-heading">
+  <div><span class="eyebrow">Member profile</span><h1><%= member.full_name %></h1><p>With the group since <%= new Date(member.join_date).toLocaleDateString('en', { day: 'numeric', month: 'long', year: 'numeric' }) %></p></div>
+  <div class="heading-actions"><% if (['chairperson','secretary'].includes(user.role)) { %><a class="button button-secondary" href="/members/<%= member.id %>/edit">Edit details</a><% } %><% if (user.role === 'subgroup_chairperson') { %><a class="button button-primary" href="/subgroup/cashbook">Update subgroup financial records</a><a class="button button-secondary" href="/subgroup/loans">Process subgroup loans</a><% } %><a class="button button-secondary" href="/members">← All members</a></div>
+</section>
+<div class="profile-grid">
+  <section class="panel">
+    <div class="panel-heading"><div><span class="eyebrow">About</span><h2>Contact & membership</h2></div><span class="status-badge <%= member.status === 'active' ? 'status-active' : 'status-inactive' %>"><%= member.status %></span></div>
+    <dl class="detail-list"><div><dt>Phone</dt><dd><%= member.phone || 'Not provided' %></dd></div><div><dt>Email</dt><dd><%= member.email || 'Not provided' %></dd></div><div><dt>Address</dt><dd><%= member.address || 'Not provided' %></dd></div><div><dt>Subgroup</dt><dd><%= member.subgroup_name || 'Not assigned' %></dd></div><div><dt>Joined</dt><dd><%= new Date(member.join_date).toLocaleDateString('en', { day: 'numeric', month: 'long', year: 'numeric' }) %></dd></div><% if (canViewFinancialData) { %><div><dt>Registration fee recorded</dt><dd class="money"><%= currency || 'KES' %> <%= Number(member.registration_fee_paid).toLocaleString('en', { minimumFractionDigits: 2 }) %></dd></div><% } %></dl>
+  </section>
+  <% if (canViewFinancialData) { %>
+  <section class="panel">
+    <div class="panel-heading"><div><span class="eyebrow">Member history</span><h2>Contributions</h2></div></div>
+    <% if (contributions.length) { %><div class="mini-list"><% contributions.forEach((item) => { %><div class="mini-row"><span><strong><%= item.transaction_type === 'registration_fee' ? 'Registration fee' : item.transaction_type.replace(/_/g, ' ') %></strong><small><%= new Date(item.contribution_date).toLocaleDateString() %></small></span><strong class="money"><%= currency || 'KES' %> <%= Number(item.amount).toLocaleString('en', { minimumFractionDigits: 2 }) %></strong></div><% }) %></div><% } else { %><p class="quiet-empty">No contributions have been recorded for this member.</p><% } %>
+  </section>
+  <section class="panel panel-span">
+    <div class="panel-heading"><div><span class="eyebrow">Borrowing history</span><h2>Loans</h2></div></div>
+    <% if (loans.length) { %><div class="table-wrap"><table><thead><tr><th>Applied</th><th>Principal</th><th>Rate</th><th>Balance</th><th>Status</th></tr></thead><tbody><% loans.forEach((loan) => { %><tr><td><%= new Date(loan.application_date).toLocaleDateString() %></td><td class="money"><%= currency || 'KES' %> <%= Number(loan.amount).toLocaleString('en', { minimumFractionDigits: 2 }) %></td><td><%= Number(loan.interest_rate).toFixed(2) %>% p.a.</td><td class="money"><%= currency || 'KES' %> <%= Number(loan.balance).toLocaleString('en', { minimumFractionDigits: 2 }) %></td><td><span class="status-badge status-<%= loan.status %>"><%= loan.status %></span></td></tr><% }) %></tbody></table></div><% } else { %><p class="quiet-empty">No loan applications on record.</p><% } %>
+  </section>
+  <% } %>
+</div>
+<% if (user.role === 'chairperson') { %><form class="danger-zone" action="/members/<%= member.id %>/delete" method="post" data-confirm="Permanently delete this member? Members with financial or attendance records cannot be deleted."><input type="hidden" name="_csrf" value="<%= csrfToken %>"><span><strong>Remove member record</strong><small>This is only possible if no financial or attendance records are linked.</small></span><button class="button button-danger" type="submit">Delete member</button></form><% } %>
+<%- include('../partials/footer') %>

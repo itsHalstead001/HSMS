@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#183c32">
+  <title><%= title %> · <%= groupName %></title>
+  <link rel="stylesheet" href="/styles.css?v=4">
+  <script src="/app.js?v=3" defer></script>
+</head>
+<body>
+<% if (user) { %>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="/dashboard">
+        <span class="brand-mark" aria-hidden="true">H</span>
+        <span class="brand-copy"><strong>Halstead</strong><small>SHG Management</small></span>
+      </a>
+      <div class="group-label"><%= groupName %></div>
+      <nav class="main-nav" aria-label="Main navigation">
+        <a href="/dashboard" class="<%= title === 'Dashboard' ? 'active' : '' %>">
+          <span class="nav-icon">⌂</span> Overview
+        </a>
+        <% if (['chairperson', 'secretary', 'treasurer', 'subgroup_chairperson', 'subgroup_secretary'].includes(user.role)) { %>
+          <a href="/members" class="<%= ['Members', 'Register member', 'Update member'].includes(title) ? 'active' : '' %>">
+            <span class="nav-icon">♙</span> Members
+          </a>
+        <% } %>
+        <% if (['chairperson', 'secretary'].includes(user.role)) { %>
+          <a href="/meetings" class="<%= title === 'Meetings' || title === 'Schedule meeting' ? 'active' : '' %>">
+            <span class="nav-icon">◷</span> Meetings
+          </a>
+          <a href="/documents" class="<%= title === 'Documents' ? 'active' : '' %>">
+            <span class="nav-icon">▤</span> Documents
+          </a>
+        <% } %>
+        <% if (user.role === 'subgroup_chairperson') { %>
+          <div class="nav-section">SUBGROUP FINANCE</div>
+          <a href="/subgroup/cashbook" class="<%= title.includes('cashbook') || title.includes('collection') ? 'active' : '' %>">
+            <span class="nav-icon">＋</span> Subgroup collections
+          </a>
+          <a href="/subgroup/loans" class="<%= title.toLowerCase().includes('loan') ? 'active' : '' %>">
+            <span class="nav-icon">↗</span> Subgroup loans
+          </a>
+        <% } %>
+        <% if (user.role === 'subgroup_secretary') { %>
+          <div class="nav-section">SUBGROUP MEETINGS</div>
+          <a href="/subgroup/meetings" class="<%= title.toLowerCase().includes('meeting') || title.toLowerCase().includes('attendance') ? 'active' : '' %>">
+            <span class="nav-icon">◷</span> Attendance & notes
+          </a>
+        <% } %>
+        <% if (['chairperson', 'financial_secretary', 'treasurer'].includes(user.role)) { %>
+          <div class="nav-section">FINANCE</div>
+          <a href="/finance/contributions" class="<%= title === 'Meeting cashbooks' || title === 'Meeting cashbook' ? 'active' : '' %>">
+            <span class="nav-icon">＋</span> Group cashbook summary
+          </a>
+          <% if (['chairperson', 'treasurer'].includes(user.role)) { %>
+            <a href="/finance/loans" class="<%= title === 'Loans' || title.includes('schedule') || title === 'Update loan' ? 'active' : '' %>">
+              <span class="nav-icon">↗</span> Loans
+            </a>
+            <a href="/finance/reports" class="<%= title === 'Financial reports' ? 'active' : '' %>">
+              <span class="nav-icon">▥</span> Reports & ledger
+            </a>
+          <% } %>
+        <% } %>
+        <% if (user.role === 'chairperson') { %>
+          <div class="nav-section">ADMINISTRATION</div>
+          <a href="/users" class="<%= title === 'User accounts' ? 'active' : '' %>">
+            <span class="nav-icon">♧</span> User accounts
+          </a>
+          <a href="/settings" class="<%= title === 'Group settings' ? 'active' : '' %>">
+            <span class="nav-icon">⚙</span> Group settings
+          </a>
+        <% } %>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="user-chip">
+          <span class="avatar"><%= user.fullName.split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase() %></span>
+          <span class="user-copy"><strong><%= user.fullName %></strong><small><%= roles[user.role] %></small></span>
+        </div>
+        <form action="/logout" method="post">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="logout-button" type="submit"><span aria-hidden="true">↪</span> Sign out</button>
+        </form>
+      </div>
+    </aside>
+    <div class="main-area">
+      <header class="topbar">
+        <button class="menu-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+        <div class="topbar-title"><span><%= groupName %></span><strong><%= title %></strong></div>
+        <div class="topbar-actions"><span class="role-pill"><%= roles[user.role] %></span><button class="theme-toggle" type="button" aria-label="Switch theme"><span class="theme-icon" aria-hidden="true">☾</span></button></div>
+      </header>
+      <main class="content">
+        <% if (notice) { %><div class="notice notice-<%= noticeType %>" role="<%= noticeType === 'error' ? 'alert' : 'status' %>"><%= notice %></div><% } %>
+<% } else { %>
+  <div class="auth-shell">
+    <div class="auth-topline"><a class="auth-brand" href="/login"><span class="brand-mark">H</span><span><strong>Halstead</strong><small>Self-Help Group</small></span></a><button class="theme-toggle" type="button" aria-label="Switch theme"><span class="theme-icon" aria-hidden="true">☾</span></button></div>
+    <main class="auth-content">
+<% } %>

@@ -1,0 +1,40 @@
+<%- include('../partials/header') %>
+<section class="page-heading">
+  <div><span class="eyebrow">Meeting collection</span><h1><%= meeting.title %></h1><p><%= new Date(meeting.meeting_date).toLocaleString('en', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' }) %> · Member payments and group cash position.</p></div>
+  <a class="button button-secondary" href="/finance/contributions">← All cashbooks</a>
+</section>
+
+<section class="metric-grid cashbook-summary" aria-label="Meeting cash summary">
+  <article class="metric-card"><div class="metric-label">Carried forward <span class="metric-icon blue">↗</span></div><strong class="metric-value"><span class="currency"><%= currency %></span> <%= Number(summary.opening_balance).toLocaleString('en', { minimumFractionDigits: 2 }) %></strong><span class="metric-caption">Cash from earlier meetings</span></article>
+  <article class="metric-card"><div class="metric-label">Collected today <span class="metric-icon green">＋</span></div><strong class="metric-value"><span class="currency"><%= currency %></span> <%= Number(summary.current_collections).toLocaleString('en', { minimumFractionDigits: 2 }) %></strong><span class="metric-caption">Fine, social, savings and loan returns</span></article>
+  <article class="metric-card"><div class="metric-label">Loans given <span class="metric-icon amber">↗</span></div><strong class="metric-value"><span class="currency"><%= currency %></span> <%= Number(summary.loans_disbursed).toLocaleString('en', { minimumFractionDigits: 2 }) %></strong><span class="metric-caption">Disbursed from this meeting’s cash</span></article>
+  <article class="metric-card"><div class="metric-label">Cash to carry forward <span class="metric-icon green">◈</span></div><strong class="metric-value"><span class="currency"><%= currency %></span> <%= Number(summary.closing_balance).toLocaleString('en', { minimumFractionDigits: 2 }) %></strong><span class="metric-caption">Available after loan disbursements</span></article>
+</section>
+
+<form class="panel cashbook-form" action="/finance/cashbook/<%= meeting.id %>" method="post">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <div class="panel-heading"><div><span class="eyebrow">Enter amounts received today</span><h2>Member payments</h2></div><span class="muted">Leave fields blank if no payment was made.</span></div>
+  <% if (members.length) { %>
+    <div class="table-wrap"><table class="cashbook-table">
+      <thead><tr><th>Member</th><th>Fine</th><th>Social</th><th>Savings</th><th>Loan return</th><th>Previously recorded</th></tr></thead>
+      <tbody><% members.forEach((member) => { %><tr>
+        <td><strong><%= member.full_name %></strong></td>
+        <% ['fine', 'social', 'savings', 'loan_return'].forEach((category) => { %>
+          <td><label class="sr-only" for="<%= category %>-<%= member.id %>"><%= category.replace('_', ' ') %> for <%= member.full_name %></label><input id="<%= category %>-<%= member.id %>" name="<%= category %>_<%= member.id %>" type="number" min="0" max="9999999999" step="0.01" placeholder="0.00"></td>
+        <% }) %>
+        <td class="cashbook-history"><small>Fine <%= Number(member.fine).toFixed(2) %> · Social <%= Number(member.social).toFixed(2) %></small><small>Savings <%= Number(member.savings).toFixed(2) %> · Loan <%= Number(member.loan_return).toFixed(2) %></small></td>
+      </tr><% }) %></tbody>
+    </table></div>
+    <div class="form-actions"><button class="button button-primary" type="submit">Record meeting collections</button></div>
+  <% } else { %><p class="quiet-empty">Register active members before recording meeting payments.</p><% } %>
+</form>
+
+<section class="panel cashbook-breakdown">
+  <div class="panel-heading"><div><span class="eyebrow">Meeting totals</span><h2>Cash reconciliation</h2></div><a class="text-link" href="/finance/loans">Review approved loans →</a></div>
+  <div class="summary-pills">
+    <% [['Fine', summary.fine], ['Social', summary.social], ['Savings', summary.savings], ['Loan returned', summary.loan_return], ['Opening balance', summary.opening_balance], ['Available before loans', summary.cash_available], ['Loans given', summary.loans_disbursed], ['Closing carry-forward', summary.closing_balance]].forEach(([label, amount]) => { %>
+      <div class="summary-pill"><span><%= label %></span><strong><%= currency %> <%= Number(amount).toLocaleString('en', { minimumFractionDigits: 2 }) %></strong></div>
+    <% }) %>
+  </div>
+</section>
+<%- include('../partials/footer') %>

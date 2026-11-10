@@ -1,0 +1,14 @@
+<%- include('partials/header') %>
+<section class="page-heading"><div><span class="eyebrow">Make this workspace yours</span><h1>Group settings</h1><p>Set the group identity and the defaults used for new records.</p></div></section>
+<form class="panel form-panel settings-form" action="/settings" method="post">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>"><h2>Group details</h2>
+  <div class="form-grid">
+    <div class="form-field form-full"><label for="group_name">Group name <span class="required">*</span></label><input id="group_name" name="group_name" maxlength="160" required value="<%= settings.group_name || '' %>"></div>
+    <div class="form-field"><label for="currency">Currency code <span class="required">*</span></label><input id="currency" name="currency" maxlength="8" pattern="[A-Z]{3,8}" required value="<%= settings.currency || 'KES' %>"><small>Use an uppercase code such as KES or USD.</small></div>
+    <div class="form-field"><label for="registration_fee">Registration fee (<%= settings.currency || 'KES' %>)</label><input id="registration_fee" name="registration_fee" type="number" min="0" max="9999999999" step="0.01" value="<%= settings.registration_fee || '0.00' %>"></div>
+    <div class="form-field"><label for="interest_rate">Annual simple interest rate (%)</label><input id="interest_rate" name="interest_rate" type="number" min="0" max="100" step="0.01" required value="<%= settings.interest_rate || '12.0000' %>"><small>New loans use this rate; existing loans keep their agreed rate.</small></div>
+    <div class="form-field"><label for="default_loan_term_months">Default loan term</label><input id="default_loan_term_months" name="default_loan_term_months" type="number" min="1" max="120" step="1" required value="<%= settings.default_loan_term_months || '12' %>"><small>Months. Can be changed for each application.</small></div>
+  </div>
+  <div class="form-actions"><button class="button button-primary" type="submit">Save group settings</button></div>
+</form>
+<%- include('partials/footer') %>

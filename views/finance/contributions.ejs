@@ -1,0 +1,30 @@
+<%- include('../partials/header') %>
+<section class="page-heading">
+  <div><span class="eyebrow">Subgroup totals for the weekly meeting</span><h1>Group cashbook summary</h1><p>Subgroup chairpersons submit totals for fines, socials, savings, loan returns and loans taken. The system combines the four reports and carries any balance forward.</p></div>
+  <div class="report-tools"><form class="report-period-form" action="/finance/contributions/report.pdf" method="get"><div class="report-period-field"><label for="group-report-period">Report period</label><select id="group-report-period" name="period"><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option></select></div><div class="report-period-field"><label for="group-report-date">Period containing</label><input id="group-report-date" name="date" type="date" value="<%= reportDate %>" required></div><button class="button button-primary button-small" type="submit">Download PDF</button></form><% if (['chairperson', 'treasurer'].includes(user.role)) { %><a class="button button-secondary" href="/finance/loans">Review loans</a><% } %></div>
+</section>
+<% if (meetings.length) { %>
+  <div class="subgroup-meeting-list">
+    <% meetings.forEach((meeting) => { %>
+      <section class="panel subgroup-meeting-card">
+        <div class="panel-heading">
+          <div><span class="eyebrow"><%= new Date(meeting.meeting_date).toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) %></span><h2><%= meeting.title %></h2></div>
+          <span class="submission-count"><%= meeting.subgroups.filter((subgroup) => subgroup.submitted && !subgroup.pendingChanges).length %> of 4 subgroups up to date</span>
+        </div>
+        <div class="subgroup-summary-grid">
+          <% [['Opening balance', meeting.summary.opening_balance], ['Fines', meeting.summary.fine], ['Socials', meeting.summary.social], ['Savings', meeting.summary.savings], ['Loan returned', meeting.summary.loan_return], ['Loan taken', meeting.summary.loans_disbursed], ['Cash to carry forward', meeting.summary.closing_balance]].forEach(([label, amount]) => { %>
+            <div class="summary-pill"><span><%= label %></span><strong><%= currency %> <%= Number(amount).toLocaleString('en', { minimumFractionDigits: 2 }) %></strong></div>
+          <% }) %>
+        </div>
+        <details class="subgroup-breakdown">
+          <summary>View subgroup breakdown</summary>
+          <div class="table-wrap"><table><thead><tr><th>Subgroup</th><th>Status</th><th>Fines</th><th>Socials</th><th>Savings</th><th>Loan returned</th><th>Loan taken</th></tr></thead><tbody>
+            <% meeting.subgroups.forEach((subgroup) => { %><tr><td><strong>Subgroup <%= subgroup.code %></strong></td><td><span class="status-badge <%= subgroup.pendingChanges ? 'status-pending' : subgroup.submitted ? 'status-active' : 'status-pending' %>"><%= subgroup.pendingChanges ? 'Changes pending' : subgroup.submitted ? 'Submitted' : 'Awaiting report' %></span></td><% ['fines', 'socials', 'savings', 'loan_return', 'loan_taken'].forEach((field) => { %><td class="money"><%= currency %> <%= Number(subgroup[field]).toLocaleString('en', { minimumFractionDigits: 2 }) %></td><% }) %></tr><% }) %>
+          </tbody></table></div>
+        </details>
+        <div class="form-actions"><a class="text-link" href="/finance/contributions/<%= meeting.id %>/report.pdf">Download this week’s PDF →</a><% if (['chairperson', 'treasurer'].includes(user.role)) { %><a class="text-link" href="/finance/cashbook/<%= meeting.id %>">Open individual member ledger →</a><% } %></div>
+      </section>
+    <% }) %>
+  </div>
+<% } else { %><section class="panel"><p class="quiet-empty">Weekly Thursday meetings will appear here.</p></section><% } %>
+<%- include('../partials/footer') %>

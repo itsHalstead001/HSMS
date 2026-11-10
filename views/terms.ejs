@@ -1,0 +1,37 @@
+<%- include('partials/header') %>
+<section class="terms-page">
+  <div class="terms-heading">
+    <span class="eyebrow">A clear understanding</span>
+    <h1>Terms &amp; conditions</h1>
+    <p>These guidelines help keep your group’s shared workspace useful, respectful and secure.</p>
+  </div>
+  <article class="panel terms-card">
+    <p class="terms-updated">For members and authorized officers of <strong><%= groupName %></strong></p>
+    <section>
+      <h2>1. Authorized use</h2>
+      <p>Use this workspace only for legitimate group administration. Keep your sign-in details private, sign out on shared devices, and tell your chairperson if you suspect an account has been accessed without permission.</p>
+    </section>
+    <section>
+      <h2>2. Accurate group records</h2>
+      <p>Officers are responsible for entering complete and accurate member, meeting and financial information. The ledger reflects entries made by the group and is not an independent audit, bank statement or guarantee of available funds.</p>
+    </section>
+    <section>
+      <h2>3. Personal information and documents</h2>
+      <p>Access and use member details only for agreed group activities. Upload documents the group is entitled to store, and avoid sharing personal information outside the group without an appropriate reason and permission.</p>
+    </section>
+    <section>
+      <h2>4. Financial decisions</h2>
+      <p>Loan approvals, interest rates, contributions and expenses remain subject to the group’s constitution and decisions. This system records calculations and transactions; it does not provide legal, accounting or financial advice.</p>
+    </section>
+    <section>
+      <h2>5. Responsible access and availability</h2>
+      <p>Do not attempt to bypass role permissions, disrupt the service or access another person’s account. The group should keep appropriate database and document backups. Access may be interrupted for maintenance or circumstances beyond the group’s control.</p>
+    </section>
+    <section>
+      <h2>6. Questions and group policy</h2>
+      <p>Contact your chairperson with questions, correction requests or concerns about access. These guidelines support, and do not replace, your group’s constitution or applicable law.</p>
+    </section>
+  </article>
+  <div class="terms-actions"><a class="button button-primary" href="<%= user ? '/dashboard' : '/login' %>">Return to <%= user ? 'dashboard' : 'sign in' %></a></div>
+</section>
+<%- include('partials/footer') %>

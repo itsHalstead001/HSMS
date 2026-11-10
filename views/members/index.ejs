@@ -1,0 +1,14 @@
+<%- include('../partials/header') %>
+<section class="page-heading">
+  <div><span class="eyebrow">People make the group</span><h1>Members</h1><p>Keep member details up to date and easy to find.</p></div>
+  <% if (['chairperson','secretary'].includes(user.role)) { %><a class="button button-primary" href="/members/new">＋ Register a member</a><% } %>
+</section>
+<section class="panel">
+  <form action="/members" method="get" class="search-form"><label class="sr-only" for="member-search">Search members</label><input id="member-search" name="search" value="<%= search %>" type="search" placeholder="Search by name, phone or email"><button class="button button-secondary" type="submit">Search</button><% if (search) { %><a class="text-link" href="/members">Clear</a><% } %></form>
+  <% if (members.length) { %>
+    <div class="table-wrap"><table><thead><tr><th>Member</th><th>Subgroup</th><th>Phone</th><th>Joined</th><th>Status</th><% if (canViewFinancialData) { %><th>Registration fee</th><% } %><th></th></tr></thead><tbody>
+      <% members.forEach((member) => { %><tr><td><a class="member-name" href="/members/<%= member.id %>"><%= member.full_name %></a><% if (user.role !== 'secretary' && member.email) { %><small class="cell-sub"><%= member.email %></small><% } %></td><td><%= member.subgroup_name || 'Not assigned' %></td><td><%= member.phone || '—' %></td><td><%= new Date(member.join_date).toLocaleDateString() %></td><td><span class="status-badge <%= member.status === 'active' ? 'status-active' : 'status-inactive' %>"><%= member.status %></span></td><% if (canViewFinancialData) { %><td class="money"><%= currency || 'KES' %> <%= Number(member.registration_fee_paid).toLocaleString('en', { minimumFractionDigits: 2 }) %></td><% } %><td><a class="text-link" href="/members/<%= member.id %>">Open →</a></td></tr><% }) %>
+    </tbody></table></div>
+  <% } else { %><div class="empty-state compact"><span class="empty-icon">♙</span><h2>No members found</h2><p><%= search ? 'Try another search, or clear your filter.' : 'Register your first member to get started.' %></p></div><% } %>
+</section>
+<%- include('../partials/footer') %>

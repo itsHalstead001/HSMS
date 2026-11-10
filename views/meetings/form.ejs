@@ -1,0 +1,10 @@
+<%- include('../partials/header') %>
+<section class="page-heading"><div><span class="eyebrow">Bring everyone together</span><h1>Schedule a meeting</h1><p>Choose a time and share a little context for the group.</p></div><a class="button button-secondary" href="/meetings">← Back to meetings</a></section>
+<form class="panel form-panel narrow-panel" action="/meetings" method="post">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <div class="form-field"><label for="title">Meeting title <span class="required">*</span></label><input id="title" name="title" maxlength="180" required placeholder="For example, Monthly group meeting"></div>
+  <div class="form-field"><label for="meeting_date">Date and time <span class="required">*</span></label><input id="meeting_date" name="meeting_date" type="datetime-local" required value="<%= defaultMeetingDate %>"><small>Regular group meetings are on Thursdays. Upcoming weekly meetings are added automatically.</small></div>
+  <div class="form-field"><label for="description">Notes for members</label><textarea id="description" name="description" rows="4" maxlength="5000" placeholder="Agenda, location or anything members should know"></textarea></div>
+  <div class="form-actions"><a class="button button-secondary" href="/meetings">Cancel</a><button class="button button-primary" type="submit">Schedule meeting</button></div>
+</form>
+<%- include('../partials/footer') %>
