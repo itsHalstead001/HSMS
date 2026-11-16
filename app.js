@@ -22,7 +22,7 @@ const {
 } = require('./src/meeting-cashbook');
 const { createSubgroupCashbookSummaries } = require('./src/subgroup-cashbook');
 const { reportPeriods, getReportPeriod } = require('./src/report-period');
-const { formatMemberContributionSms, sendTwilioSms } = require('./src/member-notification');
+const { formatMemberContributionSms, sendGalatextSms } = require('./src/member-notification');
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
@@ -1253,7 +1253,7 @@ app.post('/subgroup/cashbook/:id/member/:memberId', allowRoles('subgroup_chairpe
   const record = await saveSubgroupMemberMeetingRecord(req);
   try {
     const body = formatMemberContributionSms({ ...record, currency: res.locals.currency });
-    await sendTwilioSms({ to: record.phone, body });
+    await sendGalatextSms({ to: record.phone, body });
   } catch (error) {
     console.error('Member contribution SMS failed:', error.message);
     return redirectNotice(
@@ -1263,7 +1263,7 @@ app.post('/subgroup/cashbook/:id/member/:memberId', allowRoles('subgroup_chairpe
       'error'
     );
   }
-  redirectNotice(res, `/subgroup/cashbook/${meetingId}`, 'Member financial records saved and SMS notification submitted to Twilio.');
+  redirectNotice(res, `/subgroup/cashbook/${meetingId}`, 'Member financial records saved and SMS notification submitted to Galatext.');
 }));
 
 app.post('/subgroup/cashbook/:id/member/:memberId/delete', allowRoles('subgroup_chairperson'), asyncRoute(async (req, res) => {
@@ -1271,7 +1271,7 @@ app.post('/subgroup/cashbook/:id/member/:memberId/delete', allowRoles('subgroup_
   const record = await saveSubgroupMemberMeetingRecord(req, true);
   try {
     const body = formatMemberContributionSms({ ...record, currency: res.locals.currency });
-    await sendTwilioSms({ to: record.phone, body });
+    await sendGalatextSms({ to: record.phone, body });
   } catch (error) {
     console.error('Member contribution SMS failed after record deletion:', error.message);
     return redirectNotice(
@@ -1281,7 +1281,7 @@ app.post('/subgroup/cashbook/:id/member/:memberId/delete', allowRoles('subgroup_
       'error'
     );
   }
-  redirectNotice(res, `/subgroup/cashbook/${meetingId}`, 'Member records cleared and SMS notification submitted to Twilio. The change is in the audit history and report totals are marked for resubmission.');
+  redirectNotice(res, `/subgroup/cashbook/${meetingId}`, 'Member records cleared and SMS notification submitted to Galatext. The change is in the audit history and report totals are marked for resubmission.');
 }));
 
 app.post('/subgroup/cashbook/:id/submit', allowRoles('subgroup_chairperson'), asyncRoute(async (req, res) => {
