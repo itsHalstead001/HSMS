@@ -1,16 +1,111 @@
+
 <%- include('../partials/header') %>
-<section class="page-heading"><div><span class="eyebrow">Meeting details</span><h1><%= meeting.title %></h1><p><%= new Date(meeting.meeting_date).toLocaleString('en', { dateStyle: 'full', timeStyle: 'short' }) %></p></div><a class="button button-secondary" href="/meetings">← All meetings</a></section>
-<% if (meeting.description) { %><section class="panel meeting-description"><span class="eyebrow">Notes for members</span><p><%= meeting.description %></p></section><% } %>
-<form action="/meetings/<%= meeting.id %>/records" method="post" class="meeting-record-grid">
-  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-  <section class="panel">
-    <div class="panel-heading"><div><span class="eyebrow">Who was there?</span><h2>Attendance</h2></div><span class="muted"><%= members.length %> active members</span></div>
-    <% if (members.length) { %><div class="attendance-list"><% members.forEach((member) => { %><div class="attendance-row"><strong><%= member.full_name %></strong><label class="sr-only" for="att-<%= member.id %>">Attendance for <%= member.full_name %></label><select id="att-<%= member.id %>" name="attendance[<%= member.id %>]"><% ['present', 'absent', 'excused'].forEach((status) => { %><option value="<%= status %>" <%= (member.status || 'absent') === status ? 'selected' : '' %>><%= status[0].toUpperCase() + status.slice(1) %></option><% }) %></select></div><% }) %></div><% } else { %><p class="quiet-empty">There are no active members to mark.</p><% } %>
+
+<section class="page-heading">
+  <div>
+    <span class="eyebrow">Meeting details</span>
+    <h1><%= meeting.title %></h1>
+    <p><%= new Date(meeting.meeting_date).toLocaleString('en', { dateStyle: 'full', timeStyle: 'short' }) %></p>
+  </div>
+  <a class="button button-secondary" href="/meetings">← All meetings</a>
+</section>
+
+<% if (meeting.description) { %>
+  <section class="panel meeting-description">
+    <span class="eyebrow">Notes for members</span>
+    <p><%= meeting.description %></p>
   </section>
-  <section class="panel">
-    <div class="panel-heading"><div><span class="eyebrow">The important bits</span><h2>Meeting minutes</h2></div></div>
-    <div class="form-field"><label class="sr-only" for="minutes">Meeting minutes</label><textarea id="minutes" name="minutes" rows="12" maxlength="20000" placeholder="Record decisions, actions and anything to carry forward."><%= meeting.minutes || '' %></textarea><small>These notes are saved with the meeting record.</small></div>
-    <div class="form-actions"><button class="button button-primary" type="submit">Save minutes & attendance</button></div>
-  </section>
-</form>
+<% } %>
+
+<div class="meeting-record-grid">
+
+  <!-- ATTENDANCE FORM -->
+  <form action="/meetings/<%= meeting.id %>/attendance" method="post">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <span class="eyebrow">Who was there?</span>
+          <h2>Attendance</h2>
+        </div>
+        <span class="muted"><%= members.length %> members</span>
+      </div>
+
+      <% if (members.length) { %>
+        <div class="attendance-list">
+          <% members.forEach((member) => { %>
+            <div class="attendance-row">
+              <strong><%= member.full_name %></strong>
+
+              <label class="sr-only" for="att-<%= member.id %>">
+                Attendance for <%= member.full_name %>
+              </label>
+
+              <select
+                id="att-<%= member.id %>"
+                name="attendance[<%= member.id %>]"
+                required
+              >
+                <% ['present', 'absent', 'excused'].forEach((status) => { %>
+                  <option
+                    value="<%= status %>"
+                    <%= (member.status || 'absent') === status ? 'selected' : '' %>
+                  >
+                    <%= status[0].toUpperCase() + status.slice(1) %>
+                  </option>
+                <% }) %>
+              </select>
+            </div>
+          <% }) %>
+        </div>
+      <% } else { %>
+        <p class="quiet-empty">There are no members to mark.</p>
+      <% } %>
+
+      <div class="form-actions">
+        <button class="button button-primary" type="submit">
+          Save attendance
+        </button>
+      </div>
+    </section>
+  </form>
+
+  <!-- MINUTES FORM -->
+  <form action="/meetings/<%= meeting.id %>/minutes" method="post">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <span class="eyebrow">The important bits</span>
+          <h2>Meeting minutes</h2>
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label class="sr-only" for="minutes">Meeting minutes</label>
+
+        <textarea
+          id="minutes"
+          name="minutes"
+          rows="12"
+          maxlength="20000"
+          placeholder="Record decisions, actions and anything to carry forward."
+        ><%= meeting.minutes || '' %></textarea>
+
+        <small>These notes are saved independently of attendance.</small>
+      </div>
+
+      <div class="form-actions">
+        <button class="button button-primary" type="submit">
+          Save meeting minutes
+        </button>
+      </div>
+    </section>
+  </form>
+
+</div>
+
 <%- include('../partials/footer') %>
+

@@ -60,7 +60,7 @@ app.use(helmet({
     }
   }
 }));
-app.use(express.urlencoded({ extended: false, limit: '128kb', parameterLimit: 5000 }));
+app.use(express.urlencoded({ extended: true, limit: '128kb', parameterLimit: 5000 }));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1d', etag: true }));
 
 const sessionStore = new MySQLSessionStore(db.pool);
@@ -1266,15 +1266,16 @@ app.get('/subgroup/meetings', allowRoles('subgroup_secretary'), asyncRoute(async
   await ensureWeeklyMeetings();
   const [meetings] = await db.pool.execute(
     `SELECT mt.id, mt.title, mt.meeting_date, smn.updated_at,
-       (SELECT COUNT(*) FROM attendance a
-        JOIN members m ON m.id = a.member_id
-        WHERE a.meeting_id = mt.id AND a.status = 'present'
-          AND m.subgroup_code = ?) AS attendees
-     FROM meetings mt
-     LEFT JOIN subgroup_meeting_notes smn
-       ON smn.meeting_id = mt.id AND smn.subgroup_code = ?
-     WHERE mt.meeting_date >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)
-     ORDER BY mt.meeting_date DESC LIMIT 24`,
+      (SELECT COUNT(*) FROM attendance a
+      JOIN members m ON m.id = a.member_id
+      WHERE a.meeting_id = mt.id
+       AND a.status = 'present'
+       AND m.subgroup_code = ?) AS attendees
+    FROM meetings mt
+    LEFT JOIN subgroup_meeting_notes smn
+      ON smn.meeting_id = mt.id
+      AND smn.subgroup_code = ?
+    ORDER BY mt.meeting_date DESC` ,
     [subgroupCode, subgroupCode]
   );
   res.render('subgroups/meetings', { title: `Subgroup ${subgroupCode} meetings`, meetings, subgroupCode });
@@ -1291,50 +1292,137 @@ app.get('/subgroup/meetings/:id', allowRoles('subgroup_secretary'), asyncRoute(a
     [meetingId, subgroupCode]
   );
   const [members] = await db.pool.execute(
-    `SELECT m.id, m.full_name, a.status
-     FROM members m LEFT JOIN attendance a ON a.member_id = m.id AND a.meeting_id = ?
-     WHERE m.subgroup_code = ? AND m.status = 'active'
-     ORDER BY m.full_name`,
-    [meetingId, subgroupCode]
+   `SELECT m.id, m.full_name, a.status
+    FROM members m
+    LEFT JOIN attendance a
+      ON a.member_id = m.id
+      AND a.meeting_id = ?
+    WHERE m.subgroup_code = ?
+      AND (
+        m.status = 'active'
+        OR a.id IS NOT NULL
+      )
+    ORDER BY m.full_name`,
+   [meetingId, subgroupCode]
   );
+
   res.render('subgroups/meeting', {
     title: `Subgroup ${subgroupCode} attendance`, meeting: meetings[0],
     members, notes: note ? note.notes : '', subgroupCode
   });
 }));
 
-app.post('/subgroup/meetings/:id', allowRoles('subgroup_secretary'), asyncRoute(async (req, res) => {
+app.post('/subgroup/meetings/:id/attendance', allowRoles('subgroup_secretary'), asyncRoute(async (req, res) => {
   const meetingId = positiveId(req.params.id, 'Meeting');
   const subgroupCode = req.session.user.subgroupCode;
-  if (!subgroupCodes.includes(subgroupCode)) throw new Error('This account is not assigned to a subgroup.');
-  const notes = typeof req.body.notes === 'string' ? req.body.notes.trim().slice(0, 10000) : '';
+
+  if (!subgroupCodes.includes(subgroupCode)) {
+    throw new Error('This account is not assigned to a subgroup.');
+  }
+
+  const attendance = req.body.attendance &&
+    typeof req.body.attendance === 'object' &&
+    !Array.isArray(req.body.attendance)
+      ? req.body.attendance
+      : {};
+
   await transaction(async (connection) => {
-    const [meetings] = await connection.execute('SELECT id FROM meetings WHERE id = ? FOR UPDATE', [meetingId]);
-    if (!meetings.length) throw Object.assign(new Error('That meeting could not be found.'), { status: 404 });
-    const [members] = await connection.execute(
-      `SELECT id FROM members
-       WHERE subgroup_code = ? AND status = 'active' ORDER BY id FOR UPDATE`,
-      [subgroupCode]
+    const [meetings] = await connection.execute(
+      'SELECT id FROM meetings WHERE id = ? FOR UPDATE',
+      [meetingId]
     );
-    const attendance = req.body.attendance && typeof req.body.attendance === 'object'
-      ? req.body.attendance : {};
-    for (const member of members) {
-      const submittedStatus = attendance[String(member.id)];
-      const status = ['present', 'absent', 'excused'].includes(submittedStatus) ? submittedStatus : 'absent';
-      await connection.execute(
-        `INSERT INTO attendance (meeting_id, member_id, status) VALUES (?, ?, ?)
-         ON DUPLICATE KEY UPDATE status = VALUES(status)`,
-        [meetingId, member.id, status]
+
+    if (!meetings.length) {
+      throw Object.assign(
+        new Error('That meeting could not be found.'),
+        { status: 404 }
       );
     }
-    await connection.execute(
-      `INSERT INTO subgroup_meeting_notes (meeting_id, subgroup_code, notes, updated_by)
-       VALUES (?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE notes = VALUES(notes), updated_by = VALUES(updated_by)`,
-      [meetingId, subgroupCode, notes || null, req.session.user.id]
+
+    const [members] = await connection.execute(
+      `SELECT m.id
+       FROM members m
+       WHERE m.subgroup_code = ?
+         AND (
+           m.status = 'active'
+           OR EXISTS (
+             SELECT 1
+             FROM attendance a
+             WHERE a.meeting_id = ?
+               AND a.member_id = m.id
+           )
+         )
+       ORDER BY m.id
+       FOR UPDATE`,
+      [subgroupCode, meetingId]
     );
+
+    for (const member of members) {
+      const submittedStatus = attendance[String(member.id)];
+
+      if (!['present', 'absent', 'excused'].includes(submittedStatus)) {
+        throw new Error(
+          `Invalid attendance status for member ID ${member.id}.`
+        );
+      }
+
+      await connection.execute(
+        `INSERT INTO attendance
+          (meeting_id, member_id, status)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+          status = VALUES(status)`,
+        [meetingId, member.id, submittedStatus]
+      );
+    }
   });
-  redirectNotice(res, `/subgroup/meetings/${meetingId}`, 'Subgroup attendance and meeting notes saved.');
+
+  redirectNotice(
+    res,
+    `/subgroup/meetings/${meetingId}`,
+    'Subgroup attendance saved successfully.'
+  );
+}));
+
+app.post('/subgroup/meetings/:id/notes', allowRoles('subgroup_secretary'), asyncRoute(async (req, res) => {
+  const meetingId = positiveId(req.params.id, 'Meeting');
+  const subgroupCode = req.session.user.subgroupCode;
+
+  if (!subgroupCodes.includes(subgroupCode)) {
+    throw new Error('This account is not assigned to a subgroup.');
+  }
+
+  const notes = typeof req.body.notes === 'string'
+    ? req.body.notes.trim().slice(0, 10000)
+    : '';
+
+  const [meetings] = await db.pool.execute(
+    'SELECT id FROM meetings WHERE id = ?',
+    [meetingId]
+  );
+
+  if (!meetings.length) {
+    throw Object.assign(
+      new Error('That meeting could not be found.'),
+      { status: 404 }
+    );
+  }
+
+  await db.pool.execute(
+    `INSERT INTO subgroup_meeting_notes
+      (meeting_id, subgroup_code, notes, updated_by)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+      notes = VALUES(notes),
+      updated_by = VALUES(updated_by)`,
+    [meetingId, subgroupCode, notes || null, req.session.user.id]
+  );
+
+  redirectNotice(
+    res,
+    `/subgroup/meetings/${meetingId}`,
+    'Subgroup meeting notes saved successfully.'
+  );
 }));
 
 app.get('/subgroup/cashbook/:id', allowRoles('subgroup_chairperson'), asyncRoute(async (req, res) => {
@@ -1855,49 +1943,112 @@ app.get('/meetings/:id', allowRoles('chairperson', 'secretary'), asyncRoute(asyn
   const [meetings] = await db.pool.execute('SELECT * FROM meetings WHERE id = ?', [req.params.id]);
   if (!meetings.length) return res.status(404).render('error', { title: 'Meeting not found', message: 'That meeting could not be found.' });
   const [members] = await db.pool.execute(
-    `SELECT m.id, m.full_name, a.status FROM members m
-     LEFT JOIN attendance a ON a.member_id = m.id AND a.meeting_id = ?
-     WHERE m.status = 'active' ORDER BY m.full_name`,
+    `SELECT m.id, m.full_name, a.status
+    FROM members m
+    LEFT JOIN attendance a
+     ON a.member_id = m.id
+     AND a.meeting_id = ?
+    WHERE m.status = 'active'
+      OR a.id IS NOT NULL
+    ORDER BY m.full_name`,
     [req.params.id]
   );
   res.render('meetings/show', { title: meetings[0].title, meeting: meetings[0], members });
 }));
 
-app.post('/meetings/:id/records', allowRoles('chairperson', 'secretary'), asyncRoute(async (req, res) => {
-  const minutes = typeof req.body.minutes === 'string' ? req.body.minutes.trim().slice(0, 20000) : '';
-  await transaction(async (connection) => {
-    const [meeting] = await connection.execute('SELECT id FROM meetings WHERE id = ? FOR UPDATE', [req.params.id]);
-    if (!meeting.length) throw Object.assign(new Error('That meeting could not be found.'), { status: 404 });
-    await connection.execute('UPDATE meetings SET minutes = ? WHERE id = ?', [minutes || null, req.params.id]);
-    const submitted = req.body.attendance &&
-      typeof req.body.attendance === 'object'
+app.post('/meetings/:id/attendance', allowRoles('chairperson', 'secretary'), asyncRoute(async (req, res) => {
+  const meetingId = positiveId(req.params.id, 'Meeting');
+
+  const attendance = req.body.attendance &&
+    typeof req.body.attendance === 'object' &&
+    !Array.isArray(req.body.attendance)
       ? req.body.attendance
       : {};
-    const [activeMembers] = await connection.execute(
-      `SELECT id FROM members
-      WHERE status = 'active'
-      ORDER BY id
-      FOR UPDATE`
-    );
-    for (const member of activeMembers) {
-      const submittedStatus = submitted[String(member.id)];
 
-      const status = ['present', 'absent', 'excused']
-        .includes(submittedStatus)
-        ? submittedStatus
-        : 'absent';
+  await transaction(async (connection) => {
+    const [meetings] = await connection.execute(
+      'SELECT id FROM meetings WHERE id = ? FOR UPDATE',
+      [meetingId]
+    );
+
+    if (!meetings.length) {
+      throw Object.assign(
+        new Error('That meeting could not be found.'),
+        { status: 404 }
+      );
+    }
+
+    const [members] = await connection.execute(
+      `SELECT m.id
+       FROM members m
+       WHERE m.status = 'active'
+          OR EXISTS (
+            SELECT 1
+            FROM attendance a
+            WHERE a.meeting_id = ?
+              AND a.member_id = m.id
+          )
+       ORDER BY m.id
+       FOR UPDATE`,
+      [meetingId]
+    );
+
+    for (const member of members) {
+      const submittedStatus = attendance[String(member.id)];
+
+      if (!['present', 'absent', 'excused'].includes(submittedStatus)) {
+        throw new Error(
+          `Invalid attendance status for member ID ${member.id}.`
+        );
+      }
 
       await connection.execute(
         `INSERT INTO attendance
-         (meeting_id, member_id, status)
-        VALUES (?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-         status = VALUES(status)`,
-       [req.params.id, member.id, status]
+          (meeting_id, member_id, status)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+          status = VALUES(status)`,
+        [meetingId, member.id, submittedStatus]
       );
     }
   });
-  redirectNotice(res, `/meetings/${req.params.id}`, 'Minutes and attendance saved.');
+
+  redirectNotice(
+    res,
+    `/meetings/${meetingId}`,
+    'Attendance saved successfully.'
+  );
+}));
+
+app.post('/meetings/:id/minutes', allowRoles('chairperson', 'secretary'), asyncRoute(async (req, res) => {
+  const meetingId = positiveId(req.params.id, 'Meeting');
+
+  const minutes = typeof req.body.minutes === 'string'
+    ? req.body.minutes.trim().slice(0, 20000)
+    : '';
+
+  const [meetings] = await db.pool.execute(
+    'SELECT id FROM meetings WHERE id = ?',
+    [meetingId]
+  );
+
+  if (!meetings.length) {
+    throw Object.assign(
+      new Error('That meeting could not be found.'),
+      { status: 404 }
+    );
+  }
+
+  await db.pool.execute(
+    'UPDATE meetings SET minutes = ? WHERE id = ?',
+    [minutes || null, meetingId]
+  );
+
+  redirectNotice(
+    res,
+    `/meetings/${meetingId}`,
+    'Meeting minutes saved successfully.'
+  );
 }));
 
 const upload = multer({
