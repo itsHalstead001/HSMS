@@ -529,9 +529,15 @@ async function recordLoanRepayment(connection, loan, amount, meetingId, userId) 
 
 async function disburseLoan(connection, loanId, meetingId, userId, requiredSubgroup = null) {
   const [loans] = await connection.execute(
-    `SELECT l.*, m.subgroup_code FROM loans l
-     JOIN members m ON m.id = l.member_id
-     WHERE l.id = ? FOR UPDATE`,
+    `SELECT
+      l.*,
+      m.subgroup_code,
+      m.full_name,
+      m.phone
+    FROM loans l
+    JOIN members m ON m.id = l.member_id
+    WHERE l.id = ?
+    FOR UPDATE`,
     [loanId]
   );
   const loan = loans[0];
@@ -539,12 +545,111 @@ async function disburseLoan(connection, loanId, meetingId, userId, requiredSubgr
   if (requiredSubgroup && loan.subgroup_code !== requiredSubgroup) {
     throw Object.assign(new Error('This loan does not belong to your subgroup.'), { status: 404 });
   }
-  const openingBalance = await ensureMeetingCashbook(connection, meetingId, userId);
-  const totals = await meetingCashTotals(connection, meetingId);
-  const cash = calculateCashSummary(openingBalance, totals);
-  if (toCents(loan.amount) > toCents(cash.cash_available)) {
-    throw new Error(`The meeting cashbook has ${cash.cash_available} available, which is not enough to disburse this loan.`);
-  }
+  // Every loan must be funded by the member's own subgroup.
+
+const subgroupCode = loan.subgroup_code;
+
+if (!subgroupCodes.includes(subgroupCode)) {
+  throw new Error(
+    'This member is not assigned to a valid subgroup.'
+  );
+}
+
+// Lock this subgroup's fund account.
+// This prevents concurrent loan disbursements
+// from spending the same available funds.
+
+const [fundAccounts] = await connection.execute(
+  `SELECT opening_balance
+   FROM subgroup_fund_accounts
+   WHERE subgroup_code = ?
+   FOR UPDATE`,
+  [subgroupCode]
+);
+
+if (!fundAccounts.length) {
+  throw new Error(
+    `Subgroup ${subgroupCode} has no fund account configured.`
+  );
+}
+
+// Calculate all money collected by this subgroup.
+
+const [[collections]] = await connection.execute(
+  `SELECT
+     COALESCE(
+       SUM(fine + social + savings + loan_return),
+       0
+     ) AS total_collections
+
+   FROM subgroup_member_meeting_records
+
+   WHERE subgroup_code = ?`,
+  [subgroupCode]
+);
+
+// Calculate previous loan disbursements
+// belonging to this subgroup.
+
+const [[disbursements]] = await connection.execute(
+  `SELECT
+     COALESCE(SUM(t.amount), 0) AS total_disbursed
+
+   FROM transactions t
+
+   JOIN loans l
+     ON l.id = t.related_id
+
+   JOIN members m
+     ON m.id = l.member_id
+
+   WHERE t.transaction_type = 'loan_disbursement'
+
+     AND t.is_voided = FALSE
+
+     AND m.subgroup_code = ?`,
+  [subgroupCode]
+);
+
+// Convert everything to cents to avoid
+// floating-point calculation errors.
+
+const subgroupOpening = toCents(
+  fundAccounts[0].opening_balance
+);
+
+const subgroupCollections = toCents(
+  collections.total_collections
+);
+
+const subgroupDisbursed = toCents(
+  disbursements.total_disbursed
+);
+
+const subgroupAvailable =
+  subgroupOpening +
+  subgroupCollections -
+  subgroupDisbursed;
+
+if (subgroupAvailable < 0) {
+  throw new Error(
+    `Subgroup ${subgroupCode} has a negative available balance.`
+  );
+}
+
+const requestedLoan = toCents(loan.amount);
+
+if (requestedLoan > subgroupAvailable) {
+
+  throw new Error(
+    `Subgroup ${subgroupCode} has only KES ${
+      fromCents(subgroupAvailable)
+    } available. The requested loan of KES ${
+      loan.amount
+    } cannot be disbursed.`
+  );
+
+}
   const totalDue = Number(loan.amount) * (1 + Number(loan.interest_rate) / 100 * Number(loan.term_months) / 12);
   const totalCents = Math.round(totalDue * 100);
   const baseCents = Math.floor(totalCents / Number(loan.term_months));
@@ -578,8 +683,138 @@ async function disburseLoan(connection, loanId, meetingId, userId, requiredSubgr
     );
   }
   await recalculateCashbookCarryForwards(connection);
+  return {
+    loanId: loan.id,
+    memberName: loan.full_name,
+    phone: loan.phone,
+    amount: loan.amount,
+    subgroupCode: loan.subgroup_code
+  };
 }
 
+async function sendLoanDisbursementSms(loan) {
+
+  if (!loan.phone) {
+    throw new Error(
+      'Member phone number is missing.'
+    );
+  }
+
+  const body =
+    `HSMS: Dear ${loan.memberName}, ` +
+    `your loan of KES ${Number(loan.amount).toFixed(2)} ` +
+    `has been approved and disbursed. ` +
+    `Subgroup ${loan.subgroupCode}. ` +
+    `Thank you.`;
+
+  await sendGalatextSms({
+    to: loan.phone,
+    body
+  });
+
+}
+
+async function sendMonthlyLoanReminders() {
+
+  const [[period]] = await db.pool.execute(
+    `SELECT DATE_FORMAT(
+       CURRENT_DATE,
+       '%Y-%m'
+     ) AS reminder_month`
+  );
+
+  const reminderMonth = period.reminder_month;
+
+  const [loans] = await db.pool.execute(
+    `SELECT
+       l.id,
+       l.balance,
+       m.full_name,
+       m.phone
+
+     FROM loans l
+
+     JOIN members m
+       ON m.id = l.member_id
+
+     WHERE l.status = 'active'
+
+       AND l.balance > 0
+
+       AND l.disbursed_at <=
+         DATE_SUB(NOW(), INTERVAL 1 MONTH)
+
+       AND NOT EXISTS (
+
+         SELECT 1
+         FROM loan_sms_reminders r
+
+         WHERE r.loan_id = l.id
+
+           AND r.reminder_month = ?
+
+           AND r.status = 'sent'
+
+       )`,
+    [reminderMonth]
+  );
+
+  for (const loan of loans) {
+
+    if (!loan.phone) {
+      continue;
+    }
+
+    try {
+
+      const body =
+        `HSMS: Dear ${loan.full_name}, ` +
+        `this is a reminder that your outstanding ` +
+        `loan balance is KES ${Number(loan.balance).toFixed(2)}. ` +
+        `Please make your monthly repayment. Thank you.`;
+
+      await sendGalatextSms({
+        to: loan.phone,
+        body
+      });
+
+      await db.pool.execute(
+        `INSERT INTO loan_sms_reminders
+          (loan_id, reminder_month, status, attempts, sent_at)
+         VALUES (?, ?, 'sent', 1, NOW())
+
+         ON DUPLICATE KEY UPDATE
+           status = 'sent',
+           attempts = attempts + 1,
+           sent_at = NOW(),
+           last_error = NULL`,
+        [loan.id, reminderMonth]
+      );
+
+    } catch (error) {
+
+      console.error(
+        `Loan reminder failed for loan ${loan.id}:`,
+        error.message
+      );
+
+      await db.pool.execute(
+        `INSERT INTO loan_sms_reminders
+          (loan_id, reminder_month, status, attempts, last_error)
+         VALUES (?, ?, 'failed', 1, ?)
+
+         ON DUPLICATE KEY UPDATE
+           status = 'failed',
+           attempts = attempts + 1,
+           last_error = VALUES(last_error)`,
+        [loan.id, reminderMonth, error.message]
+      ).catch(console.error);
+
+    }
+
+  }
+
+}
 async function setting(key, fallback) {
   const [rows] = await db.pool.execute('SELECT setting_value FROM group_settings WHERE setting_key = ?', [key]);
   return rows.length ? rows[0].setting_value : fallback;
@@ -1151,11 +1386,11 @@ async function saveSubgroupMemberMeetingRecord(req, clearRecord = false) {
   const memberId = positiveId(req.params.memberId, 'Member');
   const subgroupCode = req.session.user.subgroupCode;
   if (!subgroupCodes.includes(subgroupCode)) throw new Error('This account is not assigned to a subgroup.');
-  const values = {
-    fine: clearRecord ? '0.00' : positiveMoney(req.body.fine || '0', 'Fine'),
-    social: clearRecord ? '0.00' : positiveMoney(req.body.social || '0', 'Social'),
-    savings: clearRecord ? '0.00' : positiveMoney(req.body.savings || '0', 'Savings'),
-    loan_return: clearRecord ? '0.00' : positiveMoney(req.body.loan_return || '0', 'Loan return')
+  const submittedValues = {
+   fine: clearRecord ? '0.00' : positiveMoney(req.body.fine || '0', 'Fine'),
+   social: clearRecord ? '0.00' : positiveMoney(req.body.social || '0', 'Social'),
+   savings: clearRecord ? '0.00' : positiveMoney(req.body.savings || '0', 'Savings'),
+   loan_return: clearRecord ? '0.00' : positiveMoney(req.body.loan_return || '0', 'Loan return')
   };
   return transaction(async (connection) => {
     const [meetings] = await connection.execute(
@@ -1169,6 +1404,58 @@ async function saveSubgroupMemberMeetingRecord(req, clearRecord = false) {
        WHERE id = ? AND subgroup_code = ? FOR UPDATE`,
       [memberId, subgroupCode]
     );
+    // Verify attendance before allowing financial transactions.
+
+    const [attendanceRows] = await connection.execute(
+       `SELECT status
+        FROM attendance
+        WHERE meeting_id = ?
+          AND member_id = ?
+        FOR UPDATE`,
+      [meetingId, memberId]
+    );
+
+    // Missing attendance defaults to absent.
+    const attendanceStatus = attendanceRows.length
+      ? attendanceRows[0].status
+      : 'absent';
+
+    const isEligibleForTransactions = [
+      'present',
+      'excused'
+    ].includes(attendanceStatus);
+
+    // An absent member cannot have the mandatory fine removed.
+    if (clearRecord && !isEligibleForTransactions) {
+      throw new Error(
+        'An absent member must retain the mandatory attendance fine.'
+      );
+    }
+
+    let values;
+
+    if (isEligibleForTransactions) {
+
+      // Present and excused members can transact normally.
+      values = submittedValues;
+
+    } else {
+
+      // Absent members cannot make other meeting transactions.
+      values = {
+        fine: Math.max(
+          200,
+          Number(submittedValues.fine)
+        ).toFixed(2),
+
+        social: '0.00',
+
+        savings: '0.00',
+
+        loan_return: '0.00'
+      };
+
+    }
     const member = memberRows[0];
     if (!member) throw Object.assign(new Error('This member is not in your subgroup or is inactive.'), { status: 404 });
     const [previous] = await connection.execute(
@@ -1404,15 +1691,63 @@ app.post('/subgroup/loans/:id/review', allowRoles('subgroup_chairperson'), async
   redirectNotice(res, '/subgroup/loans', `Subgroup loan application ${req.body.decision}.`);
 }));
 
-app.post('/subgroup/loans/:id/disburse', allowRoles('subgroup_chairperson'), asyncRoute(async (req, res) => {
-  const subgroupCode = req.session.user.subgroupCode;
-  if (!subgroupCodes.includes(subgroupCode)) throw new Error('This account is not assigned to a subgroup.');
-  const meetingId = positiveId(req.body.meeting_id, 'Meeting');
-  await transaction((connection) =>
-    disburseLoan(connection, req.params.id, meetingId, req.session.user.id, subgroupCode)
-  );
-  redirectNotice(res, '/subgroup/loans', 'Subgroup loan disbursed and repayment schedule created.');
-}));
+app.post('/subgroup/loans/:id/disburse',
+  allowRoles('subgroup_chairperson'),
+  asyncRoute(async (req, res) => {
+
+    const subgroupCode = req.session.user.subgroupCode;
+
+    if (!subgroupCodes.includes(subgroupCode)) {
+      throw new Error(
+        'This account is not assigned to a subgroup.'
+      );
+    }
+
+    const meetingId = positiveId(
+      req.body.meeting_id,
+      'Meeting'
+    );
+
+    const loan = await transaction((connection) =>
+      disburseLoan(
+        connection,
+        req.params.id,
+        meetingId,
+        req.session.user.id,
+        subgroupCode
+      )
+    );
+
+    let message =
+      'Subgroup loan disbursed and repayment schedule created.';
+
+    try {
+
+      await sendLoanDisbursementSms(loan);
+
+      message += ' SMS notification sent.';
+
+    } catch (error) {
+
+      console.error(
+        'Subgroup loan SMS failed:',
+        error.message
+      );
+
+      message +=
+        ' SMS notification could not be sent: ' +
+        error.message;
+
+    }
+
+    redirectNotice(
+      res,
+      '/subgroup/loans',
+      message
+    );
+
+  })
+);
 
 app.get('/subgroup/loans/:id/edit', allowRoles('subgroup_chairperson'), asyncRoute(async (req, res) => {
   const subgroupCode = req.session.user.subgroupCode;
@@ -1534,13 +1869,31 @@ app.post('/meetings/:id/records', allowRoles('chairperson', 'secretary'), asyncR
     const [meeting] = await connection.execute('SELECT id FROM meetings WHERE id = ? FOR UPDATE', [req.params.id]);
     if (!meeting.length) throw Object.assign(new Error('That meeting could not be found.'), { status: 404 });
     await connection.execute('UPDATE meetings SET minutes = ? WHERE id = ?', [minutes || null, req.params.id]);
-    const submitted = req.body.attendance && typeof req.body.attendance === 'object' ? req.body.attendance : {};
-    for (const [memberId, status] of Object.entries(submitted)) {
-      if (!/^\d+$/.test(memberId) || !['present', 'absent', 'excused'].includes(status)) continue;
+    const submitted = req.body.attendance &&
+      typeof req.body.attendance === 'object'
+      ? req.body.attendance
+      : {};
+    const [activeMembers] = await connection.execute(
+      `SELECT id FROM members
+      WHERE status = 'active'
+      ORDER BY id
+      FOR UPDATE`
+    );
+    for (const member of activeMembers) {
+      const submittedStatus = submitted[String(member.id)];
+
+      const status = ['present', 'absent', 'excused']
+        .includes(submittedStatus)
+        ? submittedStatus
+        : 'absent';
+
       await connection.execute(
-        `INSERT INTO attendance (meeting_id, member_id, status) VALUES (?, ?, ?)
-         ON DUPLICATE KEY UPDATE status = VALUES(status)`,
-        [req.params.id, memberId, status]
+        `INSERT INTO attendance
+         (meeting_id, member_id, status)
+        VALUES (?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+         status = VALUES(status)`,
+       [req.params.id, member.id, status]
       );
     }
   });
@@ -2068,13 +2421,54 @@ app.post('/finance/loans/:id/review', allowRoles('chairperson', 'treasurer'), as
   redirectNotice(res, '/finance/loans', `Loan application ${req.body.decision}.`);
 }));
 
-app.post('/finance/loans/:id/disburse', allowRoles('chairperson', 'treasurer'), asyncRoute(async (req, res) => {
-  const meetingId = positiveId(req.body.meeting_id, 'Meeting');
-  await transaction((connection) =>
-    disburseLoan(connection, req.params.id, meetingId, req.session.user.id)
-  );
-  redirectNotice(res, '/finance/loans', 'Loan disbursed and repayment schedule created.');
-}));
+app.post('/finance/loans/:id/disburse',
+  allowRoles('chairperson', 'treasurer'),
+  asyncRoute(async (req, res) => {
+
+    const meetingId = positiveId(
+      req.body.meeting_id,
+      'Meeting'
+    );
+
+    const loan = await transaction((connection) =>
+      disburseLoan(
+        connection,
+        req.params.id,
+        meetingId,
+        req.session.user.id
+      )
+    );
+
+    let message =
+      'Loan disbursed and repayment schedule created.';
+
+    try {
+
+      await sendLoanDisbursementSms(loan);
+
+      message += ' SMS notification sent.';
+
+    } catch (error) {
+
+      console.error(
+        'Loan disbursement SMS failed:',
+        error.message
+      );
+
+      message +=
+        ' However, the SMS notification could not be sent: ' +
+        error.message;
+
+    }
+
+    redirectNotice(
+      res,
+      '/finance/loans',
+      message
+    );
+
+  })
+);
 
 app.post('/finance/loans/:id/repayments', allowRoles('chairperson', 'treasurer'), asyncRoute(async (req, res) => {
   const amount = nonZeroMoney(req.body.amount, 'Repayment');
@@ -2357,8 +2751,30 @@ app.use((error, req, res, _next) => {
 let server;
 
 async function start() {
+
   await ensureWeeklyMeetings();
-  server = app.listen(port, () => console.log(`HSMS listening on port ${port}`));
+
+  // Process any outstanding monthly reminders.
+  await sendMonthlyLoanReminders();
+
+  // Repeat the reminder check every 24 hours.
+  const loanReminderJob = setInterval(() => {
+
+    sendMonthlyLoanReminders().catch((error) => {
+      console.error(
+        'Monthly loan reminder job failed:',
+        error
+      );
+    });
+
+  }, 24 * 60 * 60 * 1000);
+
+  loanReminderJob.unref();
+
+  server = app.listen(port, () =>
+    console.log(`HSMS listening on port ${port}`)
+  );
+
 }
 
 start().catch(async (error) => {

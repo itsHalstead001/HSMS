@@ -327,6 +327,42 @@ INSERT INTO subgroup_cashbook_config (id, opening_balance, effective_from)
 VALUES (1, 0.00, CURRENT_DATE)
 ON DUPLICATE KEY UPDATE id = VALUES(id);
 
+CREATE TABLE IF NOT EXISTS subgroup_fund_accounts (
+
+  subgroup_code CHAR(1) NOT NULL,
+
+  opening_balance DECIMAL(12,2)
+    NOT NULL DEFAULT 0.00,
+
+  created_at TIMESTAMP
+    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  updated_at TIMESTAMP
+    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (subgroup_code),
+
+  CONSTRAINT fk_subgroup_fund_account
+    FOREIGN KEY (subgroup_code)
+    REFERENCES subgroups(code)
+    ON DELETE RESTRICT,
+
+  CONSTRAINT chk_subgroup_fund_balance
+    CHECK (opening_balance >= 0)
+
+) ENGINE=InnoDB;
+
+INSERT INTO subgroup_fund_accounts
+  (subgroup_code, opening_balance)
+VALUES
+  ('A', 0.00),
+  ('B', 0.00),
+  ('C', 0.00),
+  ('D', 0.00)
+ON DUPLICATE KEY UPDATE
+  subgroup_code = VALUES(subgroup_code);
+
 CREATE TABLE IF NOT EXISTS attendance (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   meeting_id BIGINT UNSIGNED NOT NULL,
@@ -371,3 +407,34 @@ INSERT INTO group_settings (setting_key, setting_value) VALUES
   ('default_loan_term_months', '12'),
   ('currency', 'KES')
 ON DUPLICATE KEY UPDATE setting_key = VALUES(setting_key);
+
+CREATE TABLE IF NOT EXISTS loan_sms_reminders (
+
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+
+  loan_id BIGINT UNSIGNED NOT NULL,
+
+  reminder_month CHAR(7) NOT NULL,
+
+  status ENUM('pending', 'sent', 'failed')
+    NOT NULL DEFAULT 'pending',
+
+  attempts INT UNSIGNED NOT NULL DEFAULT 0,
+
+  sent_at DATETIME NULL,
+
+  last_error TEXT NULL,
+
+  PRIMARY KEY (id),
+
+  UNIQUE KEY uq_loan_month (
+    loan_id,
+    reminder_month
+  ),
+
+  CONSTRAINT fk_loan_sms_reminder
+    FOREIGN KEY (loan_id)
+    REFERENCES loans(id)
+    ON DELETE CASCADE
+
+) ENGINE=InnoDB;
