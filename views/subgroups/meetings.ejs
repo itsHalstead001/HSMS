@@ -1,18 +1,71 @@
+
 <%- include('../partials/header') %>
+
 <section class="page-heading">
-  <div><span class="eyebrow">Subgroup <%= subgroupCode %></span><h1>Meeting register</h1><p>Mark attendance and record meeting notes for your subgroup members.</p></div>
+  <div>
+    <span class="eyebrow">Subgroup <%= subgroupCode %></span>
+    <h1>Meeting register</h1>
+    <p>Mark attendance and record meeting notes for your subgroup members.</p>
+  </div>
 </section>
+
 <section class="panel">
   <% if (meetings.length) { %>
-    <div class="table-wrap"><table><thead><tr><th>Meeting</th><th>Date</th><th>Present</th><th>Notes last saved</th><th></th></tr></thead><tbody>
-      <% meetings.forEach((meeting) => { %><tr>
-        <td><strong><%= meeting.title %></strong></td>
-        <td><%= new Date(meeting.meeting_date).toLocaleDateString('en', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) %></td>
-        <td><%= meeting.attendees %></td>
-        <td><%= meeting.updated_at ? new Date(meeting.updated_at).toLocaleString() : 'Not recorded' %></td>
-        <td><a class="text-link" href="/subgroup/meetings/<%= meeting.id %>">Open register →</a></td>
-      </tr><% }) %>
-    </tbody></table></div>
-  <% } else { %><p class="quiet-empty">Weekly meetings will appear here.</p><% } %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Meeting</th>
+            <th>Date</th>
+            <th>Present</th>
+            <th>Notes last saved</th>
+            <th></th>
+          </tr>
+        </thead>
+
+        <tbody>
+          <% meetings.forEach((meeting) => { %>
+            <tr>
+              <td>
+                <strong><%= meeting.title %></strong>
+              </td>
+
+              <td>
+                <%= new Date(meeting.meeting_date).toLocaleDateString('en', {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric'
+                }) %>
+              </td>
+
+              <td><%= meeting.attendees %></td>
+
+              <td>
+                <%= meeting.updated_at
+                  ? new Date(meeting.updated_at).toLocaleString()
+                  : 'Not recorded' %>
+              </td>
+
+              <td>
+                <a class="text-link"
+                   href="/subgroup/meetings/<%= meeting.id %>">
+                  Open register →
+                </a>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+
+  <% } else { %>
+
+    <p class="quiet-empty">
+      Weekly meetings will appear here.
+    </p>
+
+  <% } %>
 </section>
+
 <%- include('../partials/footer') %>

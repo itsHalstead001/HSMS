@@ -1959,6 +1959,7 @@ app.get('/meetings/:id', allowRoles('chairperson', 'secretary'), asyncRoute(asyn
 app.post('/meetings/:id/attendance', allowRoles('chairperson', 'secretary'), asyncRoute(async (req, res) => {
   const meetingId = positiveId(req.params.id, 'Meeting');
 
+  // Accept the normal nested attendance object.
   const attendance = req.body.attendance &&
     typeof req.body.attendance === 'object' &&
     !Array.isArray(req.body.attendance)
@@ -1978,27 +1979,44 @@ app.post('/meetings/:id/attendance', allowRoles('chairperson', 'secretary'), asy
       );
     }
 
+    // Include active members and inactive members who already
+    // have an attendance record for this particular meeting.
     const [members] = await connection.execute(
-      `SELECT m.id
+      `SELECT m.id, a.status AS saved_status
        FROM members m
+       LEFT JOIN attendance a
+         ON a.member_id = m.id
+         AND a.meeting_id = ?
        WHERE m.status = 'active'
-          OR EXISTS (
-            SELECT 1
-            FROM attendance a
-            WHERE a.meeting_id = ?
-              AND a.member_id = m.id
-          )
+          OR a.id IS NOT NULL
        ORDER BY m.id
        FOR UPDATE`,
       [meetingId]
     );
 
     for (const member of members) {
-      const submittedStatus = attendance[String(member.id)];
+      // Support both nested attendance[1] and flat attendance[1]
+      // request-body formats.
+      const nestedValue = attendance[String(member.id)];
+      const flatValue = req.body[`attendance[${member.id}]`];
+
+      const rawValue = nestedValue !== undefined
+        ? nestedValue
+        : flatValue;
+
+      let submittedStatus;
+
+      if (rawValue === undefined || rawValue === null || rawValue === '') {
+        // Preserve an existing record if this field was not submitted.
+        // New records default to absent rather than cancelling the save.
+        submittedStatus = member.saved_status || 'absent';
+      } else {
+        submittedStatus = String(rawValue).trim().toLowerCase();
+      }
 
       if (!['present', 'absent', 'excused'].includes(submittedStatus)) {
         throw new Error(
-          `Invalid attendance status for member ID ${member.id}.`
+          `Invalid attendance status "${submittedStatus}" for member ID ${member.id}.`
         );
       }
 
@@ -2744,19 +2762,49 @@ app.post('/users', allowRoles('chairperson'), asyncRoute(async (req, res) => {
   }
   const hash = await bcrypt.hash(password, 12);
   await transaction(async (connection) => {
-    if (subgroupCode) {
-      await connection.execute('SELECT code FROM subgroups WHERE code = ? FOR UPDATE', [subgroupCode]);
+
+   if (subgroupCode) {
+
+    // Confirm that the selected subgroup exists.
+    const [subgroups] = await connection.execute(
+      'SELECT code FROM subgroups WHERE code = ? FOR UPDATE',
+      [subgroupCode]
+    );
+
+    if (!subgroups.length) {
+      throw new Error('The selected subgroup does not exist.');
+    }
+
+    // Only one active subgroup chairperson is permitted per subgroup.
+    // Subgroup secretaries are not restricted by this rule.
+    if (role === 'subgroup_chairperson') {
+
       const [existingChairs] = await connection.execute(
-        `SELECT id FROM users
-         WHERE role = 'subgroup_chairperson' AND subgroup_code = ? AND is_active = TRUE LIMIT 1`,
+        `SELECT id
+         FROM users
+         WHERE role = 'subgroup_chairperson'
+           AND subgroup_code = ?
+           AND is_active = TRUE
+         LIMIT 1`,
         [subgroupCode]
       );
-      if (existingChairs.length) throw new Error(`Subgroup ${subgroupCode} already has an active chairperson account.`);
+
+      if (existingChairs.length) {
+        throw new Error(
+          `Subgroup ${subgroupCode} already has an active chairperson account.`
+        );
+      }
     }
+  }
+
+   // Create the account.
     await connection.execute(
-      'INSERT INTO users (username, password_hash, full_name, role, subgroup_code) VALUES (?, ?, ?, ?, ?)',
-      [username, hash, fullName, role, subgroupCode]
+     `INSERT INTO users
+      (username, password_hash, full_name, role, subgroup_code)
+     VALUES (?, ?, ?, ?, ?)`,
+     [username, hash, fullName, role, subgroupCode]
     );
+
   });
   redirectNotice(res, '/users', 'User account created.');
 }));
