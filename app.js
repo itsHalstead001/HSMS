@@ -1312,6 +1312,7 @@ app.get('/subgroup/meetings/:id', allowRoles('subgroup_secretary'), asyncRoute(a
   });
 }));
 
+
 app.post('/subgroup/meetings/:id/attendance', allowRoles('subgroup_secretary'), asyncRoute(async (req, res) => {
   const meetingId = positiveId(req.params.id, 'Meeting');
   const subgroupCode = req.session.user.subgroupCode;
@@ -1320,7 +1321,9 @@ app.post('/subgroup/meetings/:id/attendance', allowRoles('subgroup_secretary'), 
     throw new Error('This account is not assigned to a subgroup.');
   }
 
-  const attendance = req.body.attendance &&
+  // Accept both nested and flat attendance form submissions.
+  const attendance =
+    req.body.attendance &&
     typeof req.body.attendance === 'object' &&
     !Array.isArray(req.body.attendance)
       ? req.body.attendance
@@ -1339,30 +1342,51 @@ app.post('/subgroup/meetings/:id/attendance', allowRoles('subgroup_secretary'), 
       );
     }
 
+    // Retrieve this subgroup's active members and previously
+    // recorded inactive members.
     const [members] = await connection.execute(
-      `SELECT m.id
+      `SELECT m.id, a.status AS saved_status
        FROM members m
+       LEFT JOIN attendance a
+         ON a.member_id = m.id
+         AND a.meeting_id = ?
        WHERE m.subgroup_code = ?
          AND (
            m.status = 'active'
-           OR EXISTS (
-             SELECT 1
-             FROM attendance a
-             WHERE a.meeting_id = ?
-               AND a.member_id = m.id
-           )
+           OR a.id IS NOT NULL
          )
        ORDER BY m.id
        FOR UPDATE`,
-      [subgroupCode, meetingId]
+      [meetingId, subgroupCode]
     );
 
     for (const member of members) {
-      const submittedStatus = attendance[String(member.id)];
+      const memberId = String(member.id);
+
+      const nestedValue = attendance[memberId];
+      const flatValue = req.body[`attendance[${memberId}]`];
+
+      const submittedValue =
+        nestedValue !== undefined ? nestedValue : flatValue;
+
+      // Do not silently replace a missing selection with absent.
+      if (
+        submittedValue === undefined ||
+        submittedValue === null ||
+        submittedValue === ''
+      ) {
+        throw new Error(
+          `Attendance was not received for member ID ${memberId}. Please check the attendance form and try again.`
+        );
+      }
+
+      const submittedStatus = String(submittedValue)
+        .trim()
+        .toLowerCase();
 
       if (!['present', 'absent', 'excused'].includes(submittedStatus)) {
         throw new Error(
-          `Invalid attendance status for member ID ${member.id}.`
+          `Invalid attendance status for member ID ${memberId}.`
         );
       }
 
@@ -1380,9 +1404,10 @@ app.post('/subgroup/meetings/:id/attendance', allowRoles('subgroup_secretary'), 
   redirectNotice(
     res,
     `/subgroup/meetings/${meetingId}`,
-    'Subgroup attendance saved successfully.'
+    'Attendance saved successfully.'
   );
 }));
+
 
 app.post('/subgroup/meetings/:id/notes', allowRoles('subgroup_secretary'), asyncRoute(async (req, res) => {
   const meetingId = positiveId(req.params.id, 'Meeting');

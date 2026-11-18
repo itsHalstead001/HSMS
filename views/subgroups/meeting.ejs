@@ -1,6 +1,14 @@
 
 <%- include('../partials/header') %>
 
+<%
+  const attendanceCounts = {
+    present: members.filter(m => m.status === 'present').length,
+    absent: members.filter(m => !m.status || m.status === 'absent').length,
+    excused: members.filter(m => m.status === 'excused').length
+  };
+%>
+
 <section class="page-heading">
   <div>
     <span class="eyebrow">Subgroup <%= subgroupCode %> · Meeting register</span>
@@ -24,6 +32,27 @@
           <span class="eyebrow">Subgroup <%= subgroupCode %></span>
           <h2>Attendance</h2>
         </div>
+
+
+<div class="attendance-summary">
+
+  <div class="attendance-summary-item">
+    <strong id="present-count"><%= attendanceCounts.present %></strong>
+    <span>Present</span>
+  </div>
+
+  <div class="attendance-summary-item">
+    <strong id="absent-count"><%= attendanceCounts.absent %></strong>
+    <span>Absent</span>
+  </div>
+
+  <div class="attendance-summary-item">
+    <strong id="excused-count"><%= attendanceCounts.excused %></strong>
+    <span>Excused</span>
+  </div>
+
+</div>
+
         <span class="muted"><%= members.length %> active members</span>
       </div>
 
@@ -44,6 +73,7 @@
               <select
                 id="att-<%= member.id %>"
                 name="attendance[<%= member.id %>]"
+                class="attendance-status-select"
                 required
               >
 
@@ -130,5 +160,46 @@
   </form>
 
 </div>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+  const selects = document.querySelectorAll(
+    '.attendance-status-select'
+  );
+
+  function updateAttendanceCounts() {
+
+    let present = 0;
+    let absent = 0;
+    let excused = 0;
+
+    selects.forEach(function (select) {
+
+      if (select.value === 'present') {
+        present++;
+      } else if (select.value === 'excused') {
+        excused++;
+      } else {
+        absent++;
+      }
+
+    });
+
+    document.getElementById('present-count').textContent = present;
+    document.getElementById('absent-count').textContent = absent;
+    document.getElementById('excused-count').textContent = excused;
+
+  }
+
+  selects.forEach(function (select) {
+    select.addEventListener('change', updateAttendanceCounts);
+  });
+
+  updateAttendanceCounts();
+
+});
+</script>
 
 <%- include('../partials/footer') %>
